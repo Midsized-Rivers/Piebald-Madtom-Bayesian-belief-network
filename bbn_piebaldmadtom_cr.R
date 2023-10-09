@@ -2,7 +2,7 @@
 ## This script recreates the Bayesian belief network used in Dunn et al. for Piebald Madtom
 
 #### !! set working director !!! 
-workingdirectory <-  " " # set filepath to working director between quotations
+workingdirectory <-  "C:/Users/cdunn/Google Drive/manuscripts/ssa_fishes_current/FSP/software_review/dunn_etal-code_review/dunn_etal-code_review" # set filepath to working director between quotations
 setwd(workingdirectory)
 
 
@@ -38,7 +38,7 @@ pop_resiliency_l<-lapply(populations,function(x){vector("list", length = x)})
 
 es_resiliency_l <- vector("list", length = e_settings)  # resiliency of ecological settings
 es_redundancy_l <- vector("list", length = e_settings)  # redundancy of ecological settings
-es_extinction_l <- vector("list", length = e_settings)  # extirpation risk of ecological settings
+es_extirpation_l <- vector("list", length = e_settings)  # extirpation risk of ecological settings
 
 
 ############################# Population resiliency ############################
@@ -50,12 +50,12 @@ parent_nodes   <- read.xlsx("bbn_inputs_pmt_cr.xlsx", sheet = "observed_resilien
 
 ### cpts of child nodes
 threats_cpt     <- read.xlsx("bbn_inputs_pmt_cr.xlsx", sheet = "cpt_other_threats")
-p_structure_cpt <- read.xlsx("bbn_inputs_pmt_cr.xlsx", sheet = "cpt_population_structure")
+p_strength_cpt <- read.xlsx("bbn_inputs_pmt_cr.xlsx", sheet = "cpt_population_strength")
 distribution_cpt<- read.xlsx("bbn_inputs_pmt_cr.xlsx", sheet = "cpt_local_distribution")
 resiliency_cpt  <- read.xlsx("bbn_inputs_pmt_cr.xlsx", sheet = "cpt_pop_resiliency")
 
-# i <- 1 # Used for debugging
-# j <- 3 # Used for debugging
+ i <- 1 # Used for debugging
+ j <- 3 # Used for debugging
 for(j in 1:e_settings){                   # outer loop over ecologcial settings
 for(i in 1:populations[j]){               # inner loop over HUC10s
 
@@ -91,62 +91,61 @@ for(k in 1:length(parent_probs)){
 }
 
 ## checks
-#sum(apply(parent_probs,1,prod))                       # sums to 1, probability of each combination of states occurring
-#length(apply(parent_probs,1,prod)) == nrow(focal_cpt) # should be true
+sum(apply(parent_probs,1,prod))                       # sums to 1, probability of each combination of states occurring
+length(apply(parent_probs,1,prod)) == nrow(focal_cpt) # should be true
 
-### marginal probability child = t(conditional probability parent * observed state) * marginal probability of parent node
-child_mp <- t((focal_cpt[,-c(1:length(parents))])*observed_states)%*%apply(parent_probs,1,prod)
+### marginal probability of child node: t(conditional probability of child node) * (observed state * marginal probability of parent node)
+child_mp <- t(focal_cpt[,-c(1:length(parents))]) %*% (observed_states*apply(parent_probs, 1, prod))
 child_mp <- child_mp/sum(child_mp)                                                       # put on probability scale
 child_mp <- data.frame(state = names(focal_cpt[,-c(1:length(parents))]),prob = child_mp) # clean up to mesh with child nodes
-threats_mp <- child_mp  # marginal probability table
+threats_mp <- child_mp  # marginal probability table of child node
 
 
-##### Child node: Population structure
-focal_cpt <- p_structure_cpt
+##### Child node: Population strength
+focal_cpt <- p_strength_cpt                                                                                 # import CPT for child node
 
 parent_labs <- c("Naive Occupancy (Current)", "Qualitative Abundance (count)",
-                 "Time Since Last Encounter (years)", "Naive Occupancy Trend (%)")
+                 "Years Since Last Encounter", "Naive Occupancy Trend (%)")
 
-occupancy_p   <- parent_priors[parent_priors$node == parent_labs[1], 1:2]
+## uniform probabilities among states by default 
+occupancy_p   <- parent_priors[parent_priors$node == parent_labs[1], 1:2]                                    # import uniform distribution of probabilities for parents
 abundance_p   <- parent_priors[parent_priors$node == parent_labs[2], 1:2]
 lastcaught_p  <- parent_priors[parent_priors$node == parent_labs[3], 1:2]
 trend_p       <- parent_priors[parent_priors$node == parent_labs[4], 1:2]
 
 parents <- list(occupancy_p, abundance_p, lastcaught_p, trend_p) 
 
-### indexing of observed state combinations
-parent_labs <- c("Naive Occupancy (Current)", "Qualitative Abundance (count)",
-                 "Time Since Last Encounter (years)", "Naive Occupancy Trend (%)")
-s1 <- parent_nodes[parent_nodes$node == parent_labs[1] & parent_nodes[, 2 + pop_indexing[j, 3] + i] == 1, 2]
-s2 <- parent_nodes[parent_nodes$node == parent_labs[2] & parent_nodes[, 2 + pop_indexing[j, 3] + i] == 1, 2]
-s3 <- parent_nodes[parent_nodes$node == parent_labs[3] & parent_nodes[, 2 + pop_indexing[j, 3] + i] == 1, 2]
+### indexing of observed state combinations:                                                                 # grab observed state of parents for a management unit
+s1 <- parent_nodes[parent_nodes$node == parent_labs[1] & parent_nodes[, 2 + pop_indexing[j, 3] + i] == 1, 2] # node: naive occupancy
+s2 <- parent_nodes[parent_nodes$node == parent_labs[2] & parent_nodes[, 2 + pop_indexing[j, 3] + i] == 1, 2] # node: qualitative abundance
+s3 <- parent_nodes[parent_nodes$node == parent_labs[3] & parent_nodes[, 2 + pop_indexing[j, 3] + i] == 1, 2] # time since last detection
 s4 <- parent_nodes[parent_nodes$node == parent_labs[4] & parent_nodes[, 2 + pop_indexing[j, 3] + i] == 1, 2]
 
 ### indexing for observed states
-observed_states <- ifelse(focal_cpt[, 1] %in% s1 & 
+observed_states <- ifelse(focal_cpt[, 1] %in% s1 &                                                           # create index of observed states for parent
                           focal_cpt[, 2] %in% s2 & 
                           focal_cpt[, 3] %in% s3 &
                           focal_cpt[, 4] %in% s4, 1, 0)  
 
 ### create marginal probability from two parent nodes
 tmp <- lapply(parents, enumerate_states) 
-tmp <- data.frame(setorder(expand.grid(tmp)))
+tmp <- data.frame(setorder(expand.grid(tmp)))                                                                # all combinations of parent nodes
 
-parent_probs <- tmp 
+parent_probs <- tmp                                                                                          # grab uniform probabilities for combinations of parents
 parent_probs[,] <- NA
 for(k in 1:length(parent_probs)){                     
   parent_probs[, k] <- parents[[k]][tmp[,k],]$prob
 }
 
 ### Checks
-#sum(apply(parent_probs,1,prod))                         # sums to 1, probability of each combination of states occurring
-#length(apply(parent_probs,1,prod)) == nrow(focal_cpt)   # Should be true
+sum(apply(parent_probs,1,prod))                         # sums to 1, probability of each combination of states occurring
+length(apply(parent_probs,1,prod)) == nrow(focal_cpt)   # Should be true
 
-### marginal probability
-child_mp <- t((focal_cpt[,-c(1:length(parents))])*observed_states)%*%apply(parent_probs,1,prod)
-child_mp <- child_mp/sum(child_mp)             # Put on probability scale
+### marginal probability of child node
+child_mp <- t(focal_cpt[,-c(1:length(parents))])%*%(observed_states*apply(parent_probs,1,prod))
+child_mp <- child_mp/sum(child_mp)                                                       # Put on probability scale
 child_mp <- data.frame(state = names(focal_cpt[,-c(1:length(parents))]),prob = child_mp) # clean up to mesh with child nodes
-p_structure_mp <- child_mp
+p_strength_mp <- child_mp                                                                # marginal probability table of child node
 
 
 ##### child node: Local distribution
@@ -181,20 +180,20 @@ for(k in 1:length(parent_probs)){
 }
 
 ## checks
-# sum(apply(parent_probs,1,prod))                       # sums to 1, probability of each combination of states occurring
-# length(apply(parent_probs,1,prod)) == nrow(focal_cpt) # Should be true
+ sum(apply(parent_probs,1,prod))                       # sums to 1, probability of each combination of states occurring
+ length(apply(parent_probs,1,prod)) == nrow(focal_cpt) # Should be true
 
 ### marginal probability
-child_mp <- t((focal_cpt[,-c(1:length(parents))])*observed_states)%*%apply(parent_probs,1,prod)
-child_mp <- child_mp/sum(child_mp)             # Put on probability scale
+child_mp <- t(focal_cpt[,-c(1:length(parents))])%*%(observed_states*apply(parent_probs, 1, prod))
+child_mp <- child_mp/sum(child_mp)                                                       # Put on probability scale
 child_mp <- data.frame(state = names(focal_cpt[,-c(1:length(parents))]),prob = child_mp) # clean up to mesh with child nodes
-distribution_mp <- child_mp
+distribution_mp <- child_mp                                                              # marginal probability of child node
 
 
 ##### child node: Population resiliency
 focal_cpt <- resiliency_cpt
 
-parents <- list(distribution_mp, p_structure_mp, threats_mp)
+parents <- list(distribution_mp, p_strength_mp, threats_mp)
 
 ### create marginal probability from two parent nodes
 tmp <- lapply(parents, enumerate_states) 
@@ -210,9 +209,9 @@ for(k in 1:length(parent_probs)){
 sum(apply(parent_probs,1,prod))                       # sums to 1, probability of each combination of states occurring
 length(apply(parent_probs,1,prod)) == nrow(focal_cpt) # Should be true
 
-### marginal probability
+### marginal probability of child: conditional probability of child * marginal probability of parent
 child_mp <- t(focal_cpt[,-c(1:length(parents))])%*%apply(parent_probs,1,prod)
-child_mp <- child_mp/sum(child_mp)             # Put on probability scale
+child_mp <- child_mp/sum(child_mp)                                                       # Put on probability scale
 child_mp <- data.frame(state = names(focal_cpt[,-c(1:length(parents))]),prob = child_mp) # clean up to mesh with child nodes
 pop_resiliency_mp <- child_mp
 pop_resiliency_l[[j]][[i]]          <- pop_resiliency_mp
@@ -243,7 +242,6 @@ focal_cpt <- es_resiliency_cpt
 observed_states <- rep(1, length = nrow(focal_cpt))
 
 #### create marginal probability from two parent nodes
-#tmp <- lapply(pop_resiliency_l[[j]],function(x){1:nrow(x)})
 tmp <- lapply(pop_resiliency_l[[j]], enumerate_states) 
 tmp <- data.frame(setorder(expand.grid(tmp)))
 
@@ -255,13 +253,13 @@ for(k in 1:length(parent_probs)){
 }
 
 ## checks
-#sum(apply(parent_probs,1,prod))                       # sums to 1, probability of each combination of states occurring
-#length(apply(parent_probs,1,prod)) == nrow(focal_cpt) # Should be true
+sum(apply(parent_probs,1,prod))                       # sums to 1, probability of each combination of states occurring
+length(apply(parent_probs,1,prod)) == nrow(focal_cpt) # Should be true
 
 
 ### marginal probability
 child_mp <- t((focal_cpt[,-c(1:length(pop_resiliency_l[[j]]))]))%*%apply(parent_probs,1,prod)
-child_mp <- child_mp/sum(child_mp)             # Put on probability scale
+child_mp <- child_mp/sum(child_mp)                                                                     # Put on probability scale
 child_mp <- data.frame(state = names(focal_cpt[,-c(1:length(pop_resiliency_l[[j]]))]),prob = child_mp) # clean up to mesh with child nodes
 es_resiliency_mp <- child_mp
 es_resiliency_l[[j]] <- es_resiliency_mp
@@ -308,14 +306,14 @@ for(k in 1:length(parent_probs)){
 }
 
 ## checks
-#sum(apply(parent_probs,1,prod))                       # sums to 1, probability of each combination of states occurring
-#length(apply(parent_probs,1,prod)) == nrow(focal_cpt) # Should be true
+sum(apply(parent_probs,1,prod))                       # sums to 1, probability of each combination of states occurring
+length(apply(parent_probs,1,prod)) == nrow(focal_cpt) # Should be true
 
 ### marginal probability
-child_mp <- t((focal_cpt[,-c(1:length(parents))])*observed_states)%*%apply(parent_probs,1,prod)
-child_mp <- child_mp/sum(child_mp)             # Put on probability scale
+child_mp <- t(focal_cpt[,-c(1:length(parents))])%*%(observed_states*apply(parent_probs, 1, prod))
+child_mp <- child_mp/sum(child_mp)                                                       # Put on probability scale
 child_mp <- data.frame(state = names(focal_cpt[,-c(1:length(parents))]),prob = child_mp) # clean up to mesh with child nodes
-pop_connectivity_mp <- child_mp
+pop_connectivity_mp <- child_mp                                                          # marginal probability of child
 
 
 ##### child node: Redundancy
@@ -330,7 +328,7 @@ parents <- list(parent_priors[parent_priors$node == parent_labs[1], 1:2],
 ### indicator of observed state combinations
 s1 <- node_redundancy[node_redundancy$node == parent_labs[1] & node_redundancy[, 2 + j] == 1, 2]
 s2 <- node_redundancy[node_redundancy$node == parent_labs[2] & node_redundancy[, 2 + j] == 1, 2]
-s3 <- pop_connectivity_mp[, 1]  # Need to propogate marginal probabilities of states
+s3 <- pop_connectivity_mp[, 1]  # Need to propagate marginal probabilities of states
 
 ## indexing of observed states
 observed_states <- ifelse(focal_cpt[, 1] %in% s1 & 
@@ -348,12 +346,12 @@ for(k in 1:length(parent_probs)){
 }
 
 ## checks
-#sum(apply(parent_probs,1,prod))                       # sums to 1, probability of each combination of states occurring
-#length(apply(parent_probs,1,prod)) == nrow(focal_cpt) # Should be true
+sum(apply(parent_probs,1,prod))                       # sums to 1, probability of each combination of states occurring
+length(apply(parent_probs,1,prod)) == nrow(focal_cpt) # Should be true
 
 ### marginal probability
-child_mp <- t((focal_cpt[,-c(1:length(parents))])*observed_states)%*%apply(parent_probs,1,prod)
-child_mp <- child_mp/sum(child_mp)             # Put on probability scale
+child_mp <- t(focal_cpt[,-c(1:length(parents))])%*%(observed_states*apply(parent_probs, 1, prod))
+child_mp <- child_mp/sum(child_mp)                                                       # Put on probability scale
 child_mp <- data.frame(state = names(focal_cpt[,-c(1:length(parents))]),prob = child_mp) # clean up to mesh with child nodes
 es_redundancy_mp <- child_mp
 es_redundancy_l[[j]] <- es_redundancy_mp
@@ -404,18 +402,18 @@ for(k in 1:length(parent_probs)){
 }
 
 ## checks
-# sum(apply(parent_probs,1,prod))                       # sums to 1, probability of each combination of states occurring
-# length(apply(parent_probs,1,prod)) == nrow(focal_cpt) # Should be true
+ sum(apply(parent_probs,1,prod))                       # sums to 1, probability of each combination of states occurring
+ length(apply(parent_probs,1,prod)) == nrow(focal_cpt) # Should be true
 
 ### marginal probability
-child_mp <- t((focal_cpt[,-c(1:length(parents))])*observed_states)%*%apply(parent_probs,1,prod)
-child_mp <- child_mp/sum(child_mp)             # Put on probability scale
+child_mp <- t(focal_cpt[,-c(1:length(parents))])%*%(observed_states*apply(parent_probs, 1, prod))
+child_mp <- child_mp/sum(child_mp)                                                       # Put on probability scale
 child_mp <- data.frame(state = names(focal_cpt[,-c(1:length(parents))]),prob = child_mp) # clean up to mesh with child nodes
-specialization_mp <- child_mp
+specialization_mp <- child_mp                                                            # child node
 
 
 ##### child node: vulnerability
-vulnerability_cpt <- read.xlsx("bbn_inputs_pmt_cr.xlsx", sheet = "cpt_taxon_vulnerability")
+vulnerability_cpt <- read.xlsx("bbn_inputs_pmt_cr.xlsx", sheet = "cpt_species_vulnerability")
 
 ### observed states
 node_vulnerability <- read.xlsx("bbn_inputs_pmt_cr.xlsx", sheet = "observed_vulnerability")   # houses observed states
@@ -450,22 +448,22 @@ for(k in 1:length(parent_probs)){
 }
 
 ## checks
-# sum(apply(parent_probs,1,prod))                       # sums to 1, probability of each combination of states occurring
-# length(apply(parent_probs,1,prod)) == nrow(focal_cpt) # Should be true
+ sum(apply(parent_probs,1,prod))                       # sums to 1, probability of each combination of states occurring
+ length(apply(parent_probs,1,prod)) == nrow(focal_cpt) # Should be true
 
 ### marginal probability
-child_mp <- t((focal_cpt[,-c(1:length(parents))])*observed_states)%*%apply(parent_probs,1,prod)
-child_mp <- child_mp/sum(child_mp)             # Put on probability scale
+child_mp <- t(focal_cpt[,-c(1:length(parents))])%*%(observed_states*apply(parent_probs, 1, prod))
+child_mp <- child_mp/sum(child_mp)                                                       # put on probability scale
 child_mp <- data.frame(state = names(focal_cpt[,-c(1:length(parents))]),prob = child_mp) # clean up to mesh with child nodes
-vulnerability_mp <- child_mp
+vulnerability_mp <- child_mp                                                             # child node
 
 
-############################## Extinction risk #################################
+################## Ecological setting Extirpation risk #########################
 ##### cpts of child nodes
-es_extinction_cpt <- read.xlsx("bbn_inputs_pmt_cr.xlsx", sheet = "cpt_ES_extinction_risk")
+es_extirpation_cpt <- read.xlsx("bbn_inputs_pmt_cr.xlsx", sheet = "cpt_ES_extirpation_risk")
 
 ##### taxon vulnerability
-focal_cpt <- es_extinction_cpt
+focal_cpt <- es_extirpation_cpt
 
 parents <- list(es_resiliency_l[[j]], es_redundancy_l[[j]], vulnerability_mp)
 
@@ -480,47 +478,47 @@ for(k in 1:length(parent_probs)){
 }
 
 ## checks
-# sum(apply(parent_probs,1,prod))                       # sums to 1, probability of each combination of states occurring
-# length(apply(parent_probs,1,prod)) == nrow(focal_cpt) # Should be true
+ sum(apply(parent_probs,1,prod))                       # sums to 1, probability of each combination of states occurring
+ length(apply(parent_probs,1,prod)) == nrow(focal_cpt) # Should be true
 
 ### marginal probability
 child_mp <- t((focal_cpt[,-c(1:length(parents))]))%*%apply(parent_probs,1,prod)
 child_mp <- child_mp/sum(child_mp)                                                       # Put on probability scale
 child_mp <- data.frame(state = names(focal_cpt[,-c(1:length(parents))]),prob = child_mp) # clean up to mesh with child nodes
-es_extinction_mp <- child_mp
-es_extinction_l[[j]] <- es_extinction_mp
-names(es_extinction_l)[j] <- es_lab[j]
+es_extirpation_mp <- child_mp
+es_extirpation_l[[j]] <- es_extirpation_mp
+names(es_extirpation_l)[j] <- es_lab[j]
 }                                                                                        # end outer loop over ecological settings
 
 
-########################## Global at-risk of extinction ########################
-#### create conditional probability table for ES extinction on the fly
+########################## Global at-risk of imperilment ########################
+#### create conditional probability table for global imperilment on the fly
 g_extirpation_states <- c("Secure", "At_Risk")
 g_extirpation_parents <- data.frame(matrix(nrow = 2, ncol = e_settings, 
                             rep(g_extirpation_states, times = e_settings)))
 colnames(g_extirpation_parents) <- sapply(1:e_settings, function(x)paste("extirpation", x, sep = ""))
 
-g_extinction_cpt <- setDT(expand.grid(g_extirpation_parents))  # state combinations for each population
-g_extinction_cpt <- g_extinction_cpt[, lapply(.SD, factor, levels = g_extirpation_states)]
-g_extinction_cpt <- data.frame(setorder(g_extinction_cpt))
-g_extinction_cpt$Secure <- round((apply(g_extinction_cpt, 1, 
+g_imperilment_cpt <- setDT(expand.grid(g_extirpation_parents))  # state combinations for each population
+g_imperilment_cpt <- g_imperilment_cpt[, lapply(.SD, factor, levels = g_extirpation_states)]
+g_imperilment_cpt <- data.frame(setorder(g_imperilment_cpt))
+g_imperilment_cpt$Secure <- round((apply(g_imperilment_cpt, 1, 
                                          function(x)sum((x == "Secure")))/e_settings), digits = 2)
-g_extinction_cpt$At_Risk <- 1 - g_extinction_cpt$Secure
+g_imperilment_cpt$At_Risk <- 1 - g_imperilment_cpt$Secure
 
 ### focal cpt
-focal_cpt <- g_extinction_cpt  # global extinction risk cpt
+focal_cpt <- g_imperilment_cpt  # global imperilment risk cpt
 
 ### indexing of observed states
 observed_states <- rep(1, length = nrow(focal_cpt)) # incorporate all probabilities
 
 ### create marginal probability from two parent nodes
-tmp <- lapply(es_extinction_l, enumerate_states)
+tmp <- lapply(es_extirpation_l, enumerate_states)
 tmp <- data.frame(setorder(expand.grid(tmp)))
 
 parent_probs <- tmp 
 parent_probs[,] <- NA
 for(k in 1:length(parent_probs)){                                       
-  parent_probs[, k]  <- es_extinction_l[[k]][tmp[,k],]$prob
+  parent_probs[, k]  <- es_extirpation_l[[k]][tmp[,k],]$prob
 }
 
 ## checks
@@ -528,13 +526,13 @@ for(k in 1:length(parent_probs)){
 #length(apply(parent_probs,1,prod)) == nrow(focal_cpt) # Should be true
 
 ### marginal probability
-child_mp <- t((focal_cpt[,-c(1:length(es_extinction_l))]))%*%apply(parent_probs,1,prod)
+child_mp <- t((focal_cpt[,-c(1:length(es_extirpation_l))]))%*%apply(parent_probs,1,prod)
 child_mp <- child_mp/sum(child_mp)
-child_mp <- data.frame(state = names(focal_cpt[,-c(1:length(es_extinction_l))]),prob = child_mp)
-global_extinction <- child_mp
+child_mp <- data.frame(state = names(focal_cpt[,-c(1:length(es_extirpation_l))]),prob = child_mp)
+global_imperilment <- child_mp
 
 
-################# output results as Excel spreadsheet ##########################
+##################### output results as Excel spreadsheet ######################
 ### Add 
 HUC_resiliency_DF <- data.frame("HUC" = rep(NA, times = sum(populations)), 
                                 "Secure" = rep(NA, times = sum(populations)),
@@ -568,30 +566,10 @@ names(es_redundancy_df) <- c("ecological_setting", "p_adequate", "p_inadequate")
 rownames(es_redundancy_df) <- NULL
 
 ### es extirpation risk
-es_extirpation_df <- data.frame(attributes(es_extinction_l),
-                               as.data.frame(do.call("rbind", lapply(es_extinction_l, '[[', 2))))
+es_extirpation_df <- data.frame(attributes(es_extirpation_l),
+                               as.data.frame(do.call("rbind", lapply(es_extirpation_l, '[[', 2))))
 names(es_extirpation_df) <- c("ecological_setting", "p_secure", "p_at_risk")
 rownames(es_extirpation_df) <- NULL
-
-#### write to excel spreadsheet for easy review
-piebald_3Rs_ms <- createWorkbook("piebaldmadtom_results")
-
-addWorksheet(piebald_3Rs_ms, "pop_resiliency")
-addWorksheet(piebald_3Rs_ms, "es_resiliency")
-addWorksheet(piebald_3Rs_ms, "es_redundancy")
-addWorksheet(piebald_3Rs_ms, "es_extirpation_risk")
-addWorksheet(piebald_3Rs_ms, "vulnerability")
-addWorksheet(piebald_3Rs_ms, "global_extinction_risk")
-
-
-writeData(piebald_3Rs_ms, sheet = "pop_resiliency", pop_resiliency_df)
-writeData(piebald_3Rs_ms, sheet = "es_resiliency", es_resiliency_df)
-writeData(piebald_3Rs_ms, sheet = "es_redundancy", es_redundancy_df)
-writeData(piebald_3Rs_ms, sheet = "es_extirpation_risk", es_extirpation_df)
-writeData(piebald_3Rs_ms, sheet = "vulnerability", vulnerability_mp)
-writeData(piebald_3Rs_ms, sheet = "global_extinction_risk", global_extinction)
-
-saveWorkbook(piebald_3Rs_ms, "piebaldmadtom_results_cr.xlsx", overwrite = T)
 
 
 ########################## print outputs #######################################
@@ -600,5 +578,29 @@ pop_resiliency_df # resiliency at HUC10
 es_resiliency_df  # resiliency within Ecological Setting
 es_redundancy_df  # redundancy within Ecological Setting
 es_extirpation_df # extirpation risk by Ecological Setting
-global_extinction # global extinction risk
+global_imperilment # global imperilment risk
+
+
+############### write to excel spreadsheet for easy review #####################
+piebald_3Rs_ms <- createWorkbook("piebaldmadtom_results")
+
+addWorksheet(piebald_3Rs_ms, "pop_resiliency")
+addWorksheet(piebald_3Rs_ms, "es_resiliency")
+addWorksheet(piebald_3Rs_ms, "es_redundancy")
+addWorksheet(piebald_3Rs_ms, "es_extirpation_risk")
+addWorksheet(piebald_3Rs_ms, "vulnerability")
+addWorksheet(piebald_3Rs_ms, "global_imperilment_risk")
+
+
+writeData(piebald_3Rs_ms, sheet = "pop_resiliency", pop_resiliency_df)
+writeData(piebald_3Rs_ms, sheet = "es_resiliency", es_resiliency_df)
+writeData(piebald_3Rs_ms, sheet = "es_redundancy", es_redundancy_df)
+writeData(piebald_3Rs_ms, sheet = "es_extirpation_risk", es_extirpation_df)
+writeData(piebald_3Rs_ms, sheet = "vulnerability", vulnerability_mp)
+writeData(piebald_3Rs_ms, sheet = "global_imperilment_risk", global_imperilment)
+
+saveWorkbook(piebald_3Rs_ms, "piebaldmadtom_results_cr.xlsx", overwrite = T)
+
+
+
 
