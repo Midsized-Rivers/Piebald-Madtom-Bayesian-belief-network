@@ -1,4 +1,4 @@
-# bbn_current_condition_ms
+# Bayesian belief network for calculating imperilment of fishes based on three R's framework
 Repository contains supporting files for manuscript, Dunn et al. 2023. (in press at Ecosphere), "Using resiliency, redundancy, and representation in a Bayesian belief network to assess imperilment of riverine fishes." This manuscript presents a Bayesian belief network based on the "three Rs" framework for calculating imperilment using concepts of resiliency and redundancy within representative settings for Piebald Madtom. The U.S. Fish and Wildlife Service recently adopted the three Rs framework to implement Species Status Assessments for specis petitioned for listing under the U.S. Endangered Species Act. All data and analyses are preliminary and meant to serve as a proof of concept to demonstrate how the model works. 
 
 Description of files:
